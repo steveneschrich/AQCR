@@ -1,0 +1,55 @@
+---
+title: "GenerateReferenceData"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+The purpose of this document is to generate the necessary QC metrics for the reference datasets. Each
+reference dataset is defined as a name and a path to celfiles.
+
+# Reference Datasets
+The default is to have two reference datasets, the nci60 and the MAQC data. However, you are welcome
+to add other datasets in. To do this, create the necessary functions (patterned off of maqc.R or nci60.R) 
+and add the calls below. By default, this creates a ```data/nci60``` and ```data/maqc``` directory that
+stores the CEL files. The next step (below) will generate the QC metrics from this directory.
+```{r create_reference_datasets}
+create_nci60()
+create_maqc()
+```
+
+# Reference QC Metrics
+Given a series of references datasets under ```data```, generate QC metrics for each of these.
+
+```{r generate_reference_QCMetrics}
+data_files<-list.dirs(path="data")
+data_files<-data_files[2:length(data_files)]
+names(data_files)<-basename(data_files)
+
+reference_QCMetrics<-generate_QCMetrics(data_files)
+
+reference_QCMetrics[["nci60"]]$description<-""
+reference_QCMetrics[["MAQC"]]$description<-"From the GEO website
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE5350
+Expression data from two distinct reference RNA samples (A and B) in four titration
+pools were generated at multiple test sites using a variety of microarray-based and
+alternative technology platforms. Sample A = Stratagene Universal Human Reference
+RNA (UHRR, Catalog #740000), Sample B = Ambion Human Brain Reference RNA (HBRR,
+Catalog #6050), Sample C = Samples A and B mixed at 75%:25% ratio (A:B); and
+Sample D = Samples A and B mixed at 25%:75% ratio (A:B). In general, each microarray
+platform was tested at three sites and each sample was tested in five replicates at
+each test site. Samples (hybridizations) were named according to the following convention:
+Platform_Testsite_SampleRelicate. For example, AFX_2_B1 represents the hybridization
+(array) from platform AFX processed by test site 2 for the first replicate of sample B.
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3272078/"
+
+saveRDS(reference_QCMetrics, file="reference_QCMetrics.rds")
+```
+
+# Conclusion
+That's all there is to it. You should now have a ```reference_QCMetrics.rds``` file in the current directory
+which can now be used as reference in this QC package.

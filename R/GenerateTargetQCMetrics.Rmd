@@ -1,0 +1,36 @@
+---
+title: "GenerateTargetQCMetrics"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(affy)
+library(simpleaffy)
+library(yaqcaffy)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Overview
+This package involves generating many different QC metrics from various packages. Some are likely
+redundant with each other, particularly with respect to simpleaffy and yaqcaffy. However, rather
+than try to unify all of the results we just generate them all and store them as an object for
+reporting.
+
+
+# Data
+As example data, we use the base package directory that has a couple of the MAQC data files in it.
+
+```{r}
+target_cels<-generate_QCMetrics("target",".")
+```
+
+
+# Save Results
+So that other markdown can read this in, we save to current directory. The other markdowns are 
+parameterized so that you can specify where this data lives.
+```{r}
+saveRDS(target_cels,file="target_cels.rds")
+```
+

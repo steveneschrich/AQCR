@@ -1,0 +1,257 @@
+---
+title: "RNA_Degradation"
+output: 
+  bookdown::pdf_document2: default
+  pdf_document: default
+params:
+  refs: "~/Desktop/QCTesting/reference_QCMetrics.rds"
+  target: "~/Desktop/QCTesting/target_cels.rds"
+---
+
+```{r InitialSetup, include=FALSE}
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(ggpubr)
+library(tidyverse)
+library(affy)
+library(yaqcaffy)
+library(AQCR)
+knitr::opts_chunk$set(echo = FALSE)
+options(knitr.table.format = "latex")
+```
+# Overview
+Quality control (QC) is an essential process for any type of analysis. In the case of gene expression microarrays, the field is sufficiently mature to have a number of different QC measures available. These are often implemented within R/Bioconductor packages (see Table \@ref(tab:SummaryPackageTable) for details). This document will provide a series of tables and figures outlining the QC for a specific set of samples (see Table \@ref(tab:TargetSamples) for the sample set). In addition, each type of QC will often include some pass/fail characteristics. However, these should not be treated as crisp calls but rather a comparative, or subjective, consideration.
+
+
+```{r SummaryPackageTable}
+
+kable(get_package_lists(), booktabs=TRUE, longtable=TRUE,
+             caption="Bioconductor packages used for AQCR.") %>%
+    kable_styling(latex_options=c("repeat_header"))
+```
+
+
+```{r LoadData}
+refs<-readRDS(params$refs)
+target_data<-readRDS(params$target)
+simpleaffy::setQCEnvironment(affy::cleancdfname(cdfName(target_data$affybatch)))
+
+```
+
+
+```{r TargetSamples}
+kable(data.frame(Samples=get_sample_names(target_data)), booktabs=TRUE, longtable=TRUE,
+             caption="Samples undergoing QC.") %>%
+    kable_styling(latex_options=c("repeat_header"))
+```
+
+
+
+
+# Reference Datasets
+QC metrics can often be confusing when considered in isolation. The values that are provided are difficult to assess without some form of benchmark. This package provides support for reference datasets, or datasets with known (or assumed) quality levels (see Table \@ref(tab:ReferenceDatasetDescription) for details). Thus, the metrics within this package are shown with respect to these reference datasets and QC values outside of the reference datasets are assumed to be bad. However, this interpretation is best left to individuals with familiarity with the experimental design.
+
+```{r ReferenceDatasetDescription, results='asis', eval=FALSE}
+purrr::map_dfr(refs, function(d) {
+  data.frame(name=d$name, description=d$description)
+})
+```
+
+
+# RNA Degradation
+One of the challenges with RNA expression profiling is that during amplification of RNA, 
+copies are made starting at the 3' end to the 5' end. If, for any reason, the whole mRNA
+is not intact then the amplification process stops. Practically this means that most Affymetrix
+probesets are targeting the 3' end, so in theory this won't effect expression as much.
+
+Why would the mRNA not be intact? This is usually due to RNA degradation. Enzymes destroy RNA
+that is not needed by cleaving it into small segments. And this process occurs from
+5' to 3'. Therefore, we typically see the mRNA not intact (or when enzymes are active) in
+the case of either not having the tissue frozen, thawing, freeze/thaw cycles, or most
+commonly, when FFPE.
+
+
+
+
+## Affy RNA degradation slope summary across all probes
+
+The Affymetrix 3' GeneChip consists of a series of 25mer oligos (probes). The unit of reporting
+for the GeneChip is a probeset, which is typically 11 of these probes combined together through
+some form of weighted mean. Probes in the probeset are ordered from the 5' to the 3' end, therefore
+although the sequencing space being probed is generally pretty localized it could still provide
+some estimate of signal differences between the 5' and 3' ends of the molecule. Note in particular
+that some probes do not actually match human sequences or don't match well.
+
+
+The affy Bioconductor package provides a QC measure associated with the probe-level differences in
+expression. The package calculates the average expression of each probe in a probeset, across
+all probesets in the array. Since the probes are ordered 5' to 3', any systematic difference
+in signal between 5' and 3' ends should be seen through this process. That is, the 3' end is expected
+to have more signal than the 5' end (which can experience RNA degradation).
+
+
+Rather than measure the signal for all probes in the chip, the affy package summarizes this data into
+the slope of the individual probes from 5' to 3'. Thus the higher the positive slope value the
+more likely degradation has occurred. The package does this by using linear regression of the
+means by probe position. Additionally, the p value from this regression is also included as an
+output measure. Of course, this is generally a relative measure so is used
+for comparison purposes.
+
+```{r RNADegSlopeTable, results='asis'}
+
+df<-create_qcmetric_referenceset_summaries(target_data, refs, c("3'/5' Slope"=get_slope) )
+
+foo<-sapply(df, function(d) {
+    print(kable(d,
+             booktabs=TRUE,
+             longtable=TRUE,
+             digits=10,
+             row.names=FALSE,
+             caption="Slope from regression of mean expression by probe position.") %>%
+    kable_styling(latex_options=c("repeat_header"))
+    )
+})
+```
+
+
+```{r RNADegSlopeFigure, fig.cap="RNA Degradation slopes"}
+max_samples<-max(
+  length(get_sample_names(target_data)),
+  sapply(refs, function(x) {length(get_sample_names(x))})
+)
+target_plot<-plot_rna_degradation_slopes(target_data, ymax=max_samples)
+purrr::walk(target_plot, print)
+
+
+ref_plots<-purrr::lmap(refs, function(d) {
+  plot_rna_degradation_slopes(d[[1]],
+                               main=sprintf("RNA Degradation slopes for %s",d$name),
+                               ymax=max_samples
+                               )
+})
+
+#TODO: ggarrange this.
+purrr::walk(ref_plots, print)
+
+```
+
+
+```{r SlopesWithReferenceSet, fig.cap="Slopes for target data with reference sets.", fig.height=9}
+p<-plot_qcmetric_with_referenceset(target_data, refs, c("Slopes"=get_slope))
+for (d in names(p)) {
+  panel<-ggarrange(plotlist = p[[d]], ncol=1, nrow=3)
+  for ( i in 1:length(panel)) {
+    print(annotate_figure(panel[[i]], top=sprintf("Slopes for %s", d)))
+    cat("\n\n\n")
+  }
+}
+
+```
+
+
+## GAPDH and Beta Action
+
+There are several probesets on the array that target different parts of what are assumed to 
+be constituively expressed genes. GAPDH and BetaActin, for example, have probesets that 
+target the 3', middle, and 5' end of the gene. By considering the ratios of these genes we 
+can get an idea about the amount of degradation of RNA in the sample. 
+
+
+# Configuration
+
+For the `r get_array_type(target_data)` platform, there are `r length(get_control_gene_ratio_names(target_data))` probeset pairs
+to measure 3'/5' ratios. That is, the simpleaffy approach measures all pairs of the three of more probesets
+per gene. Table \@ref(tab:GAPDHBetaActinConfig) shows the specific probesets used for this
+purpose. The shorthand is 3, 5 or M corresponding to 3', 5' and middle parts of the gene.
+
+```{r GAPDHBetaActinConfig}
+df<-tibble::enframe(name="gene_ratio", value="gene_list", qc.get.ratios()) %>%
+  mutate(`3'`=purrr::map_chr(`gene_list`, 1),
+         `5'`=purrr::map_chr(`gene_list`, 2)
+         ) %>%
+  mutate(`gene_list`=NULL)
+
+
+knitr::kable(df, booktabs=TRUE, caption=
+               sprintf("List of probes on %s for calculating 3'/5' ratios.",
+                       get_array_type(target_data)))
+
+```
+
+# Table of Values
+
+The ratios are shown below. Note that these ratios are actually log-ratios, hence a value of 0 represents a log2(1) value (the two values are equal). 
+
+Per simpleaffy (@ref)
+>  Affy state that beta actin should be within3, gapdh around 1. 
+
+```{r results='asis'}
+
+for (ratio in get_control_gene_ratio_names(target_data) ) {
+
+  # This is a way to get a no-parameter function within the loop
+  f<-c(function(d) {get_control_gene_ratio_byname(d, ratio)})
+  names(f)<-ratio
+
+  df<-create_qcmetric_referenceset_summaries(target_data, refs, f)
+  purrr::walk(names(df), function(d) {
+    print(kable(df[[d]], booktabs=TRUE,
+             longtable=TRUE,
+             digits=10,
+             row.names=FALSE,
+             caption=sprintf("Control probe ratio for %s in %s.", ratio, names(df[d]))) %>%
+          kable_styling(latex_options=c("repeat_header")))
+    cat("\n\n\n")
+  })
+}
+
+```
+
+# Reference Values
+We can consider what the expected ranges of reference values would look like for a given
+experiment. There are currently three reference datasets: a breast cancer cell line dataset,
+the nci60 and MAQC dataset. 
+
+
+
+# Scaling Factors
+In the original MAS5.0 algorithm for processing GeneChips, the data was normalized from one chip to the next by scaling the trimmed average of all signal to a constant value. While this scaling was useful for data
+analysis, it also provided a convenient quality metric. If chips overall had low signal (corresponding to poor hybridization) then the scaling factor would be high to account for this. Therefore, we can look at scaling factors to determine how well the hybridization did. 
+
+```{r results='asis'}
+
+df<-create_qcmetric_referenceset_summaries(target_data, refs, 
+                                           c("Scale Factors"=get_scaling_factors))
+
+purrr::walk(names(df), function(d) {
+
+  print(kable(df[[d]], booktabs=TRUE,
+             longtable=TRUE,
+             digits=10,
+             row.names=FALSE,
+             caption=sprintf("Scaling factors in %s.", names(df[d]))) %>%
+          kable_styling(latex_options=c("repeat_header"))
+  )
+})
+
+```
+
+The scaling factors can also be visualized graphically.
+
+```{r ScalingFactorPlots, fig.cap="Scaling factors for dataset.", fig.height=9}
+p<-plot_qcmetric_with_referenceset(target_data, refs, c("Scaling Factors"=get_scaling_factors))
+library(ggpubr)
+for (d in names(p)) {
+  panel<-ggarrange(plotlist = p[[d]], ncol=1, nrow=3)
+  for (i in 1:length(panel)) {
+    print(annotate_figure(panel[[i]], top=sprintf("Scaling Factors for %s", d)))
+    cat("\n\n")
+  }
+}
+
+```
+
+```{r eval=FALSE}
+  yaqcaffy:::.plotQCRatios(qcdata(object, "yqc"), "all", ...)
+```
