@@ -150,7 +150,7 @@ for (d in names(p)) {
 ```
 
 
-## GAPDH and Beta Action
+## GAPDH and Beta Actin
 
 There are several probesets on the array that target different parts of what are assumed to 
 be constituively expressed genes. GAPDH and BetaActin, for example, have probesets that 

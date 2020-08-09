@@ -171,7 +171,7 @@ summarize_reference_qcmetric<-function(target, ref, f) {
 create_qcmetric_reference_summary<-function(target, ref, f) {
   df<-summarize_reference_qcmetric(target, ref, f)
   fdf<-dplyr::mutate(tibble::as_tibble(df),
-                     !!sprintf("%s status", ref$name) := ifelse(outlier, "Outlier", "Normal"),
+                     !!sprintf("%s status", ref$name) := ifelse(outlier, "Outside Range", "Within Range"),
                      !!sprintf("%s quantile", ref$name) := sprintf("%2.1f", 100*quantile),
                      !!sprintf("%s mean(sd)", ref$name) := sprintf("%.3f (%.3f)", mean, sd),
                      !!sprintf("%s range", ref$name) := sprintf("%.3f-%.3f", range_min, range_max),
